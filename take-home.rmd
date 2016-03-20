@@ -1,0 +1,261 @@
+---
+title: "SRT411 Take Home Assignment"
+author: "Michael Nguyen"
+date: "March 19, 2016"
+output: pdf_document
+---
+```{r setup,include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+#Loading Libraries
+library(dplyr)
+library(tidyr)
+library(plyr)
+library(ggplot2)
+
+```
+#Defining the Problem  
+
+###Introduction  
+On March 18^th^, I let Wireshark run starting from 9:00am until 3:00pm, while instructing my younger brother that he may do whatever he liked on my computer. Some possible scenarios that could come out of this are captures of packets going to various different servers around the world, and a plentitude of possible protocols used. By the time I arrived home, the total packet capture was up to roughly 6.6 million packets and when exported added up to a whopping 1GB file. Knowing the limitation of knitting PDF, if i were to display all lines, by either viewing or printing this in one go would be very resource extensive on individuals trying to open this PDF. My goal is to try to figure out what happened during the time I left Wireshark on, until the time I arrived home and present this information in a way that shows that I uncovered some of this information.  
+
+##Constructing Questions  
+Firstly after setting my working directory and importing the *.csv* file, i took a summary of the data in order to see what i was working with. Below is the code that was used:
+>data=read.csv("mar18")  
+>info<-summary(data)  
+>write.csv(info,"info.csv")  
+
+```{r data}
+info=read.csv("info.csv")
+print(info)
+
+
+#Since it would be too resource extensive 
+#to import the dataset into this PDF, workarounds had to be made.
+```  
+
+In order for us to even look at the summary in this PDF, I had to write the output from looking at summary function to a *csv* or another readable format by *R* and read that instead. This process would be very important in order to construct this document with easy acessibility.  
+
+Now, that we have a glance at the information at hand we can begin to develop questions.
+Some simple ones that could be examined are:
+
+1. How many unique Destination IPs are there?
+2. What Protocols were used?
+3. Can we look at the frequency of packets throughout the day?
+4. Is there any applications or conversations we can look at or identify?
+
+And furthermore we question which way we can plot or visualize this data:
+
+5. Can this data be represented on a map?
+6. What constraints do we need to take into account for graphing?
+
+I will attempt to answer these questions if-possible in visual representations, and explore other options where available.
+
+#Assessing Available Data
+
+##Dataset Information
+
+Looking back at the summary of the dataset in the first part, we can see taht there are **7 different variables**
+These are as listed below:
+* No. (The packet number)
+* Time (ms)
+* Source IP
+* Destination IP
+* Protocol
+* Packet Length
+* Information Field of packet
+
+Apart from that we can use our other functions such as summary and mutate to see counts and frequency or create new columns using the current existing ones. It is most likely 
+
+##Other Sources
+
+###Geo-location
+In order to solve one of the questions posted in the first section, such as determining geolocation, I will be using this function I found [here](https://heuristically.wordpress.com/2013/05/20/geolocate-ip-addresses-in-r/) ,
+and the employment of the function below with a simple example: 
+
+```{r geofunc}
+library(rjson)
+freegeoip <- function(ip, format = ifelse(length(ip)==1,'list','dataframe'))
+{
+    if (1 == length(ip))
+    {
+        # a single IP address
+        require(rjson)
+        url <- paste(c("http://freegeoip.net/json/", ip), collapse='')
+        ret <- fromJSON(readLines(url, warn=FALSE))
+        if (format == 'dataframe')
+            ret <- data.frame(t(unlist(ret)))
+        return(ret)
+    } else {
+        ret <- data.frame()
+        for (i in 1:length(ip))
+        {
+            r <- freegeoip(ip[i], format="dataframe")
+            ret <- rbind(ret, r)
+        }
+        return(ret)
+    }
+}
+
+#Using the first non-private IP found in my dataset
+
+freegeoip("13.107.4.50")
+```
+
+With this we can figure out Longitude and Latitude of an *IP*, but we will need to play with our data a bit so we can feed this function more than one value at a time.
+
+
+#Processing Information
+
+Now we proceed with information screening to develop results. There will several parts within this section documenting different methods or techniques used to filter the information from the dataset.
+
+##Destinations
+
+First I want to look at the amount of unique destination addresses within the dataset. Using the code below:
+
+>udest <- unique(data$Destination)
+
+```{r,include=FALSE}
+udest<-read.csv("udest.csv")
+```
+```{r}
+length(udest$x)
+
+#We find that there are 6286 unique reults for the Destination Address
+#Will eventually need to see which ones are relevant
+```
+Again since I there is no dataset present in this PDF, normally by just taking the length(udest) from result of using the unique function on the **data$Destination** .
+
+
+##Protocols Usage
+
+To see a general list of which protocols were used we would also want to do a unique or summary of the protocols used.
+
+>proto<-summary(data$Protocol)
+
+```{r, include=FALSE}
+proto <- read.csv("proto.csv")
+#Fixing table labels
+proto <-rename(proto,c("X"="Protocol","x"="Count"))
+
+
+```
+```{r}
+#Display of Protocols and Count and Frequency
+#We add the frequency and round it for easier workability.
+proto <-mutate(proto,freq = round(Count/66524.15,digits=3))
+proto
+#Note: it is possible to achieve similar data using verisr's getenum
+#although format will be off.
+```
+
+There are 47 different Protocols found within the capture. Altough the information regarding frequency was rounded to 3 digits pass the decimal, we still get a good picture of the overall results. The Protocol **GVSP** which is neither one of the two standard transport protocols **TCP** and **UDP** had a surprising amount of packets. Upon looking this up, it would be appropriate because **GVSP** is used for video streaming or VOIP using **UDP** packets.
+
+
+#Visualizing & Viewing Transformation
+
+##Graphs
+
+In this section we develop our intial graphics for the data that has been processed attempting to seperate fields by use of graphics for easier readbility and also ensure that these graphs do not overutilize resources wtihin the system. We will also try to answer some of the questions posed in the first section.
+
+###A
+```{r}
+#Graph using freq
+#Seperate top 10 Protocols
+proto1<-top_n(proto,10,Count)
+qplot(Protocol,Count,data=proto1)+theme(axis.text.x = element_text(angle = 45, hjust = 1))+ggtitle("Protocol vs Count")
+```
+That was just an overview of which protocols were most often used during the session, now we begin to look at the stand out protocol for me which was **GVSP**
+
+>gd <-select(data,Time,Protocol)  
+>gd <-filter(gd,Protocol=="GVSP")
+
+###B
+```{r, include=FALSE}
+gd<-read.csv("gd.csv")
+```
+```{r}
+g1<- ggplot(gd,aes(Time,Length))
+g1<- g1+geom_smooth()
+g1 <-g1+labs(title="Average GVSP Packet Length Over Time",xlabs="Time (ms)")
+print(g1)
+```
+
+With approximately 38% or 2.3million packets, it would very intensive on any system to plot this information and convey it in a PDF. This graph plots the average length over time of GSVP packets, and is a rough approximation of how the application was sending and receiving packets. If this were plotted in either **geom_dotplot** or **geom_jitter** it would nearly impossible to load.
+
+###C
+```{r,include=FALSE}
+sumtime<-read.csv("sumtime.csv")
+sumtime<-select(sumtime,Protocol,Destination)
+```
+>by_time <- group_by(data,Protocol,Destination)  
+>sumtime<- summarise (by_time)
+
+Now we will comb through the specific IPs used and the associated protocol that was the destination of the communication. By performing a group_by function we can seperate the data by the fields we want. In this case I want to find out all the **HTTP** Destination IPs.
+
+```{r}
+onlyhttp<-filter(sumtime,Protocol=="HTTP")
+head(onlyhttp)
+```
+
+Now we can use our **freegeoip** function to tack on a Longitude and Latitude to each IP, after making some modifications to the data frame.
+
+>dest1 <- select(data,Protocol,Destination)  
+>dest1 <-filter(dest1,Protocol=="HTTP")  
+>dest2 <-unique(dest1$Destination)  
+>final<-freegeoip(dest3)  
+>world<-filter(final,latitude!=0 & longitude!=0)  
+
+```{r, include=FALSE}
+world=read.csv("world.csv")
+world<-select(world,-matches("X"))
+```
+Getting a sample of the cleaned IPs, that now have geo-location
+```{r}
+head(world)
+library(rworldmap)
+map <- getMap(resolution = "HIGH")
+plot(map, bg="lightblue", col="white", ylim=c(-60, 90), mar=c(0,0,0,0))
+points(world$longitude, world$latitude, col="red", cex=0.8,pch=19)
+```
+
+This plot of the Destination IPs and their relative location to the world shows where the **HTTP** packets travelled to. The majority resign in either the east or west coast of North America, however there were connections made to 5 continents in total (minus Antartica, and Australia). We get a good idea of where web servers are located. 
+###D
+Attempting to show the stream of data depicting the relationship of Source and Destination IP grouped by Protocol
+```{r,include=FALSE}
+library(lattice)
+extratime<-read.csv("extratime.csv")
+extratime<-select(extratime,Source,Destination,Protocol)
+```
+```{r}
+parallelplot(~extratime[1:2] | extratime$Protocol)
+```
+The column after the pipe adds the *facet* feature to the graph and allows us to graph each relationship in regards to its protocol. It is very clear and vivid in the graphs of **DHCP** and **OCSP**, where you can see that all the various source IPs are connected to the same destination IP.
+
+###E
+```{r,include=FALSE}
+vers<-read.csv("length.csv")
+```
+Finally, in the last demonstration, we take a look at the packet length in comparison to the protocol used.
+```{r}
+ss<-ggplot(vers,aes(Length,Protocol))
+ss<- ss+geom_jitter(aes(color = Length))
+ss<-ss+geom_smooth()
+ss<- ss+theme(text=element_text(family="Times", size=6))
+ss <-ss+labs(title="Protocol vs Packet Length")
+print(ss)
+```
+
+Although, there are flags for error when using **geom_smooth**, with the addition of it, the graph dots from the different rows are not as tighly knit together, making it easier to distinguish the lengths of each packet within a protocol.
+
+#Conclusion and Final Thoughts
+
+Apart from graphing the information, I tried very hard to keep this PDF as minimal resource-intensive as possible. I knew that using certain plots would drastically slow down the rendering of this PDF when opened. Although my dataset was quite large, I believe this method of reading smaller tables and files (usually hidden within R markdown) made it so the file was much quicker to access. Compiling with knitr itself was quite quick with times of under 30seconds. I will try to upload this, and view it on a different computer to check my hypothesis.
+
+I believe i was able to answer the questions that were made in the first section; However I found it quite difficult to map out frequency for all protocols throughout the day. With a bit more work, I can improve on visual portions of the graphs but the constraint that is the dataset itself was ever-present within the work. Normally loading the dataset using **read.csv()** would take roughly 5~10mins and graphing anything related to dots would usually throw out an error. Although this is a first look for myself and big data, I think the data represented covered some of the topics and also things I found interesting. 
+
+The lack of a duration column within this dataset has got me thinking. With it and with such a large dataset we can use the duration to figure out on average how fast it takes for a protocol to function.  
+
+###Notes
+
+This **.rmd** file will most likely be up on my GitHub
+It can found at the following [link](https://github.com/MoreExcuses/docs)
